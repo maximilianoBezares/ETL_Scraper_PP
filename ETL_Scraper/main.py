@@ -1,7 +1,7 @@
 import asyncio
 import os
 from dotenv import load_dotenv
-from api_odoo import OdooClient
+from ETL_Scraper.backend_client import OdooClient
 from extract_to_filter.matcher import Matcher
 from extract_to_filter.etl_matcher import ETLMatcher
 from pages import knop

@@ -1,8 +1,8 @@
 import asyncio
 from playwright.async_api import async_playwright
 import pandas as pd
-from pages.ahumada_page import AhumadaPage
-from pages.cruz_verde_page import CruzVerdePage
+from ETL_Scraper.pages.sodimac_page import AhumadaPage
+from ETL_Scraper.pages.easy_page import CruzVerdePage
 from pages.drsimi_page import DrsimiPage
 from pages.knop import KnopPage
 from pages.salcobrand_page import SalcobrandPage

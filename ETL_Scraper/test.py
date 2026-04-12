@@ -1,5 +1,5 @@
 import pandas as pd
-from api_odoo import OdooClient # Ajusta la ruta a tu carpeta
+from ETL_Scraper.backend_client import OdooClient # Ajusta la ruta a tu carpeta
 
 def test_sync():
     # 1. Configuración (Usa tus credenciales reales)
