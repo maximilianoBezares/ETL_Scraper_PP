@@ -1,0 +1,11 @@
+services:
+  scraper-service:
+    build: .
+    container_name: pharmaceutical_prices_apotheca
+    ports: 
+      - "8000:8000"
+    env_file: 
+      - .env
+    volumes: 
+      - ./ETL_scraper:/app/scraper
+    restart: unless-stopped

@@ -1,0 +1,10 @@
+# Wrapper HTTP
+fastapi
+uvicorn
+requests
+
+# ETL_scraper
+playwright
+pandas
+rapidfuzz
+python-dotenv
