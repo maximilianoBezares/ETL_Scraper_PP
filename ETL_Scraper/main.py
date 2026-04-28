@@ -1,42 +1,54 @@
+"""
+main.py: Orquestador principal o punto de partida principal del microservicio ETL de scraping.
+
+Responsable de inicializar el entorno (credenciales en .env), configurar el logging global,
+establecer conexión con la API de .NET, obtener la configuración 
+de los catálogos y orquestar la ejecución del pipeline principal.
+"""
+
 import asyncio
 import os
+import logging
 from dotenv import load_dotenv
-from ETL_Scraper.backend_client import OdooClient
-from extract_to_filter.matcher import Matcher
-from extract_to_filter.etl_matcher import ETLMatcher
-from pages import knop
-from playwright.async_api import async_playwright
+from backend_client import BackendClient
+from pipeline import Pipeline
 
 async def main(): 
     load_dotenv()
-    ODOO_CONFIG = {
-        'url': os.getenv('ODOO_URL'),
-        'db': os.getenv('ODOO_DB'),
-        'user': os.getenv('ODOO_USER'),
-        'api_key': os.getenv('ODOO_API_KEY')
+    # 1. Carga las variables de entorno (.env) y crendeciales.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(levelname)s - %(message)s"
+    )
+    logger = logging.getLogger("main")
+    # (Cambiar credenciales en .env en caso de ser necesario)
+    BACKEND_CONFIG = {
+        "username":  os.getenv("API_USERNAME"),
+        "password":  os.getenv("API_PASSWORD"),
     }
-    print("Iniciando Sistema de Inteligencia de Precios")
-
-    odoo = OdooClient(**ODOO_CONFIG)
-    if not odoo.connect():
-        print("No se pudo establecer conexión con Odoo. Abortando.")
+    logger.info("Iniciando Sistema de Extracción de Materiales de Construcción.")
+    # 2. Autentica y conecta con el Backend .NET
+    backend = BackendClient(**BACKEND_CONFIG)
+    if not await backend.connect():
+        logger.critical("No se pudo establecer conexión con el Backend .NET")
         return
-    print("Cargando configuración de catálogos desde Odoo...")
-    pages_to_scrap = odoo.fetch_models()
+    # 3. Solicita el diccionario de catálogos y URLs a procesar
+    logger.info("Cargando configuración de catálogos desde el Backend .NET...")
+    pages_to_scrap = await backend.fetch_config()
     if not pages_to_scrap:
-        print("⚠️ No se encontraron configuraciones de catálogos (URLs) en Odoo.")
+        logger.warning("No se encontraron configuraciones de catálogos (URLs) en el Backend .NET.")
         return
-    #Configuramos la ETL
-    etl = ETLMatcher(pages_to_scrap, odoo)
-    print(f"Todo listo. Se procesarán {len(pages_to_scrap)} secciones de farmacias.")
-    print("-" * 50)
+    # 4. Instancia y ejecuta el Pipeline de extracción ETL
+    etl = Pipeline(pages_to_scrap, backend)
+    logger.info("Todo listo. Se procesarán %d secciones de Sodimac.", len(pages_to_scrap))
+    logger.info("-" * 50)
     try:
         await etl.main_pipeling()
     except Exception as e:
-        print(f"Error crítico durante la ejecución: {e}")
+        logger.exception("Error crítico durante la ejecución: %s", e)
     finally:
-        print("-" * 50)
-        print("Proceso finalizado. Revisa Odoo y el Excel generado.")
+        logger.info("-" * 50)
+        logger.info("Proceso finalizado. Revisa el Backend .NET y el Excel generado.")
 
 if __name__ == "__main__":
     # Ejecutamos el loop asíncrono
@@ -44,6 +56,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n Proceso cancelado por el usuario.")
-#--- IGNORE ---odoo.push_scraped_data('pharmacy.data.importer', all_products),}
-"""if all_products and odoo.connect():
-            print(all_products)"""

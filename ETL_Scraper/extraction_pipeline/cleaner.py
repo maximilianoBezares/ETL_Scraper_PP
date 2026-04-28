@@ -1,78 +1,138 @@
-import pandas as pd
+"""
+cleaner.py: limpieza y parseo de datos.
+
+recibie datos crudos extraídos de la web y los
+devuelve limpios, normalizados y enriquecidos con especificaciones
+técnicas parseadas via Regex, listos para ser enviados por BackendClient.
+"""
+
+from __future__ import annotations
+import logging
 import re
 import unicodedata
-from rapidfuzz import process, fuzz
+from typing import Any
+import pandas as pd
+logger = logging.getLogger("material_cleaner")
 
-class Matcher:
-    def __init__(self):
-        # Eliminamos la carga del modelo de IA para liberar RAM y tiempo
-        print("Matcher optimizado para velocidad (Solo Fuzzy).")
+class MaterialCleaner:
+    # Diferentes patrones REGEX para traducir antes de la ejecucion:
 
-    def limpiar_texto(self, texto):
-        if not texto: return ""
-        texto = "".join(c for c in unicodedata.normalize('NFD', str(texto)) 
-                       if unicodedata.category(c) != 'Mn').lower()
-        texto = re.sub(r'[^a-z0-9 ]', ' ', texto)
-        return " ".join(texto.split())
+    # Grosor / Espesor
+    _RE_GROSOR = re.compile(
+        r"(\d+(?:[.,]\d+)?)\s*(mm|cm|pulgadas|pulg)",
+        re.IGNORECASE,
+    )
 
-    def limpiar_precio(self, texto_precio):
-        if isinstance(texto_precio, (int, float)): return texto_precio
-        texto = str(texto_precio)
-        limpio = re.sub(r'[^\d]', '', texto)
+    # Dimensiones en formato Ancho x Alto (área/superficie)
+    _RE_DIMENSIONES = re.compile(
+        r"(\d+(?:[.,]\d+)?)\s*[xX]\s*(\d+(?:[.,]\d+)?)\s*(mt?|cm|mm|metros?)",
+        re.IGNORECASE,
+    )
+
+    # Peso
+    _RE_PESO = re.compile(
+        r"(\d+(?:[.,]\d+)?)\s*(kg|kilos?|gr|gramos?)",
+        re.IGNORECASE,
+    )
+
+    # Largo / Longitud simple (sin "x", solo una dimensión lineal)
+    _RE_LARGO = re.compile(
+        r"(\d+(?:[.,]\d+)?)\s*(mt?|metros?|cms?)",
+        re.IGNORECASE,
+    )
+
+    def __init__(self) -> None:
+        logger.info(
+            "MaterialCleaner inicializado. "
+            "Modo: limpieza de texto + parseo Regex."
+        )
+
+    def limpiar_texto(self, texto: Any) -> str:
+        if not texto:
+            return ""
+        sin_tildes = "".join(
+            c for c in unicodedata.normalize("NFD", str(texto))
+            if unicodedata.category(c) != "Mn"
+        )
+        solo_alfanum = re.sub(r"[^a-z0-9 ]", " ", sin_tildes.lower())
+        return " ".join(solo_alfanum.split())
+
+    def limpiar_precio(self, texto_precio: Any) -> int:
+        if not texto_precio:
+            return 0
+        if isinstance(texto_precio, (int, float)):
+            return int(texto_precio)
+        limpio = re.sub(r"[^\d]", "", str(texto_precio))
         try:
             return int(limpio)
         except ValueError:
             return 0
 
-    def run_pipeline(self, df_scraped, df_odoo):
-        df_odoo = df_odoo.copy()
-        df_odoo['name_clean'] = df_odoo['name'].apply(self.limpiar_texto)
-        choices_odoo = df_odoo['name_clean'].tolist()
+    # El diccionario resultante es heterogéneo por diseño: distintos materiales tienen distintas propiedades
+    def extraer_especificaciones(self, nombre_limpio: str) -> dict[str, str]:
+        especificaciones: dict[str, str] = {}
+        # Grosor / Espesor
+        match_grosor = self._RE_GROSOR.search(nombre_limpio)
+        if match_grosor:
+            valor = match_grosor.group(1).replace(",", ".")
+            unidad = match_grosor.group(2).lower()
+            especificaciones["grosor"] = f"{valor}{unidad}"
+        # Dimensiones (Ancho x Largo)
+        match_dim = self._RE_DIMENSIONES.search(nombre_limpio)
+        if match_dim:
+            ancho = match_dim.group(1).replace(",", ".")
+            largo = match_dim.group(2).replace(",", ".")
+            unidad = match_dim.group(3).lower()
+            especificaciones["dimensiones"] = f"{ancho}x{largo}{unidad}"
+        # Largo lineal — solo si no se capturó ya con dimensiones
+        if "dimensiones" not in especificaciones:
+            match_largo = self._RE_LARGO.search(nombre_limpio)
+            if match_largo:
+                valor = match_largo.group(1).replace(",", ".")
+                unidad = match_largo.group(2).lower()
+                especificaciones["largo"] = f"{valor}{unidad}"
+        # Peso
+        match_peso = self._RE_PESO.search(nombre_limpio)
+        if match_peso:
+            valor = match_peso.group(1).replace(",", ".")
+            unidad = match_peso.group(2).lower()
+            especificaciones["peso"] = f"{valor}{unidad}"
 
-        def match_row(row):
-            nombre_scrap = self.limpiar_texto(row['nombre'])
-            precio_scrap = self.limpiar_precio(row['precio'])
-            
-            # --- SOLO FUZZY MATCHING (Sintáctico) ---
-            res = process.extractOne(nombre_scrap, choices_odoo, scorer=fuzz.token_set_ratio)
-            
-            match_name = ""
-            score = 0
-            idx_ganador = None
-            metodo = "fuzzy"
+        return especificaciones
 
-            if res:
-                match_name, score, idx_ganador = res
-                
-            # --- EXTRACCIÓN DE DATOS ---
-            if idx_ganador is not None:
-                odoo_rec = df_odoo.iloc[idx_ganador]
-                odoo_id = odoo_rec['id']
-                precio_odoo = odoo_rec['precio_odoo_base']
-                
-                diff_pct = (abs(precio_scrap - precio_odoo) / precio_odoo * 100) if precio_odoo > 0 else 100
-                amount_range = precio_odoo * 0.30
-                rango_min = precio_odoo - amount_range
-                rango_max = precio_odoo + amount_range
-                
-                # Clasificación más estricta ya que no tenemos IA
-                status = 'fail'
-                if score >= 95:
-                    status = 'matched'
-                elif score >= 50:
-                    status = 'suspicious'
-            else:
-                odoo_id, precio_odoo, diff_pct, status = None, None, 0, 'fail'
-
-            return pd.Series([odoo_id, match_name, precio_odoo, score, diff_pct, metodo, status])
-
-        cols = ['odoo_id', 'match_name', 'precio_odoo', 'score', 'diff_precio_pct', 'metodo_match', 'status']
-        df_scraped[cols] = df_scraped.apply(match_row, axis=1)
-
-        priority_map = {'matched': 3, 'suspicious': 2, 'fail': 1}
-        df_scraped['status_priority'] = df_scraped['status'].map(priority_map).fillna(0)
-
-        df_sorted = df_scraped.sort_values(by=['pharmacy', 'odoo_id', 'status_priority', 'score', 'diff_precio_pct'], ascending=[True, True, False, False, True])
-        df_final = df_sorted.drop_duplicates(subset=['pharmacy', 'odoo_id'], keep='first')
-        
-        return df_final
+    # Pipeline completo de limpieza sobre un DataFrame scrapeado.
+    def procesar_dataframe(self, df_crudo: pd.DataFrame) -> pd.DataFrame:
+        if df_crudo.empty:
+            logger.warning("procesar_dataframe() recibió un DataFrame vacío.")
+            return df_crudo
+        # Creacion de una copia
+        df = df_crudo.copy()
+        nombres_limpios: list[str] = []
+        precios_limpios: list[int] = []
+        atributos_lista: list[dict[str, str]] = []
+        for idx, row in df.iterrows():
+            try:
+                nombre_limpio = self.limpiar_texto(row.get("nombre", ""))
+                precio_limpio = self.limpiar_precio(row.get("precio", 0))
+                atributos = self.extraer_especificaciones(nombre_limpio)
+            except Exception as exc:
+                logger.warning(
+                    "Error procesando fila %s: %s "
+                    "Se asignan valores por defecto.", idx, exc
+                )
+                nombre_limpio = ""
+                precio_limpio = 0
+                atributos = {}
+            nombres_limpios.append(nombre_limpio)
+            precios_limpios.append(precio_limpio)
+            atributos_lista.append(atributos)
+        df["nombre_limpio"] = nombres_limpios
+        df["precio"] = precios_limpios
+        df["atributos_tecnicos"] = atributos_lista
+        logger.info(
+            "procesar_dataframe() completado: %d filas procesadas "
+            "Columnas resultantes: %s",
+            len(df),
+            list(df.columns),
+        )
+        return df
