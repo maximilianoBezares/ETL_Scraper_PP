@@ -3,8 +3,9 @@ fastapi
 uvicorn
 requests
 
-# ETL_scraper
+# ETL_Scraper
 playwright
 pandas
+openpyxl
 rapidfuzz
 python-dotenv

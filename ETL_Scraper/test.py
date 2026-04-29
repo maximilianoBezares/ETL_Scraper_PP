@@ -1,39 +1,26 @@
+import asyncio
 import pandas as pd
-from ETL_Scraper.backend_client import OdooClient # Ajusta la ruta a tu carpeta
+from extraction_pipeline.scraper import SupplierScraper
 
-def test_sync():
-    # 1. Configuración (Usa tus credenciales reales)
-    URL = "https://farmaciasgalenochile-practica-27306225.dev.odoo.com"
-    DB = "farmaciasgalenochile-practica-27306225"
-    USER = "admin"  
-    API_KEY = "c48d1121125f7672b7dbf684ef610a111924e2f5" 
-    
-    odoo = OdooClient(URL, DB, USER, API_KEY)
-    
-    if not odoo.connect():
-        print("❌ Falló la conexión inicial.")
-        return
+URL      = "https://www.sodimac.cl/sodimac-cl/lista/cat18320016/Maquinarias-y-complementos?page=1&store=so_com"
+PROVEEDOR = "sodimac"
+ID_FALSO  = 999
 
-    print("🛠️ Creando datos de prueba simulados...")
-    # Simulamos lo que el Matcher entregaría
-    data = {
-        'odoo_id': [1],  # <-- ASEGÚRATE de usar un ID de producto que exista en tu Odoo
-        'nombre': ['Ibuprofeno 400mg Test'],
-        'precio': ['$4.500'],
-        'pharmacy': ['Farmacia Test'],
-        'id_catalogo': [99],
-        'status': ['matched']
-    }
-    df_test = pd.DataFrame(data)
-
-    # 2. Intentar la subida
-    print("🚀 Iniciando subida de prueba...")
+async def test_scraper_aislado():
+    scraper = SupplierScraper()
+    await scraper.start()
     try:
-        # Probamos el método que conecta todo
-        odoo.push_scraped_data('product.pharmaceutical.price', df_test)
-        print("✅ Prueba finalizada. Revisa en Odoo si el registro apareció.")
+        df_resultado = await scraper.extract_data((URL, PROVEEDOR), ID_FALSO)
+        if df_resultado is not None and not df_resultado.empty:
+            print(df_resultado)
+            df_resultado.to_excel("Test_Sodimac_Maquinarias.xlsx", index=False)
+            print("✅ Extracción exitosa. Archivo guardado: Test_Sodimac_Maquinarias.xlsx")
+        else:
+            print("❌ La extracción retornó vacío o None. Revisa los selectores de SodimacPage.")
     except Exception as e:
-        print(f"❌ Error durante la prueba: {e}")
+        print(f"❌ Error durante la extracción: {e}")
+    finally:
+        await scraper.stop()
 
 if __name__ == "__main__":
-    test_sync()
+    asyncio.run(test_scraper_aislado())

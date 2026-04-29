@@ -1,7 +1,7 @@
 services:
   scraper-service:
     build: .
-    container_name: pharmaceutical_prices_apotheca
+    container_name: scraper_b2b_construccion
     ports: 
       - "8000:8000"
     env_file: 

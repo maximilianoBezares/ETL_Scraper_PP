@@ -9,8 +9,8 @@ la carga final a la API mediante el cliente HTTP (`BackendClient`).
 
 import asyncio
 import logging
-from extract_to_filter.cleaner import MaterialCleaner
-from extract_to_filter.scraper import SupplierScraper
+from extraction_pipeline.cleaner import MaterialCleaner
+from extraction_pipeline.scraper import SupplierScraper
 from datetime import datetime
 import pandas as pd
 logger = logging.getLogger("pipeline")

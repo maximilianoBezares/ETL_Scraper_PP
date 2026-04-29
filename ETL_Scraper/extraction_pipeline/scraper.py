@@ -10,7 +10,7 @@ pestañas del navegador de forma aislada para evitar fugas de memoria.
 import asyncio
 from playwright.async_api import async_playwright
 import pandas as pd
-from ETL_Scraper.pages.sodimac_page import SodimacPage
+from pages.sodimac_page import SodimacPage
 
 class SupplierScraper:
     def __init__(self):
@@ -27,7 +27,7 @@ class SupplierScraper:
         # Inicia el navegador y el contexto
         self.playwright = await async_playwright().start()
         # Inicia Chromium
-        self.browser = await self.playwright.chromium.launch(headless=True)
+        self.browser = await self.playwright.chromium.launch(headless=False)
         # Inyecta un User-Agent realista para simular que es un humano navegando
         # desde Chrome en Windows, evitando bloqueos de seguridad básicos
         self.context = await self.browser.new_context(
