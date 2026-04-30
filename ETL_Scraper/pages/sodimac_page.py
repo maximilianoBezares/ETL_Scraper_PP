@@ -13,6 +13,7 @@ class SodimacPage(BasePage):
         self.selector_precio = "li[data-internet-price] span, li[data-event-price] span"
         self.selector_link = "a"
         self.selector_imagen = "img"
+        self.selector_descripcion = "div.fb-product-information-tab__copy"
 
     # Funcion general para todas las paginas
     async def extraer_por_catalogo(self, url):
@@ -33,9 +34,18 @@ class SodimacPage(BasePage):
             await self._scroll_progresivo()
             # 4. Extraer productos de esta página
             materiales_pagina = await self._extraer_materiales_pagina(num_pagina)
+            # 5. Extraer descripcion solo a materiales nuevos (No estan en la base de datos)
+            if materiales_pagina != None:
+                # TODO: Cambiar cuando el metodo para validar este listo
+                # materiales_nuevos = await self.validar_materiales_nuevos(materiales_pagina)
+                for i in materiales_pagina:
+                    link_actual = i["link"]
+                    desc_material = await self._fetch_detalle(link_actual)
+                    i["descripcion"] = desc_material
+                    self.logger.info("Descripcion agregada a: " + i["nombre"])
             materiales.extend(materiales_pagina)
             self.logger.info("Página %d: %d materiales extraídos (total acumulado: %d).", num_pagina, len(materiales_pagina), len(materiales))
-            # 5. Cambio de pagina usando boton_next
+            # 6. Cambio de pagina usando boton_next
             boton_next = self.page.locator(self.selector_boton_next)
             if not await boton_next.is_visible():
                 self.logger.info("No hay más páginas. Extracción finalizada.")
@@ -108,3 +118,22 @@ class SodimacPage(BasePage):
         except Exception as e:
             self.logger.error("Error al extraer materiales en pág %d: %s", num_pagina, e)
         return []
+    
+    # Funcion que extrae el detalle de un material tomando solo la descripcion
+    async def _fetch_detalle(self, url_material):
+        pagina_detalle = None
+        try:
+            pagina_detalle = await self.page.context.new_page()
+            await pagina_detalle.goto(url_material, wait_until="domcontentloaded", timeout=30000)
+            await pagina_detalle.wait_for_selector(self.selector_descripcion, timeout=10000)
+            elemento = pagina_detalle.locator(self.selector_descripcion).first
+            texto = await elemento.inner_text(timeout=5000)
+            self.logger.info("Detalle obtenido para: %s", url_material)
+            return texto
+        except Exception as e:
+            self.logger.error("Retornando vacio.", e)
+            return ""
+        finally:
+            # Cerrar la pestaña para liberar RAM
+            if pagina_detalle and not pagina_detalle.is_closed():
+                await pagina_detalle.close()
