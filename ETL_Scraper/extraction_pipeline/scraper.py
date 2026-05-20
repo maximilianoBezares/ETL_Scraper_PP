@@ -27,7 +27,7 @@ class SupplierScraper:
         # Inicia el navegador y el contexto
         self.playwright = await async_playwright().start()
         # Inicia Chromium
-        self.browser = await self.playwright.chromium.launch(headless=False)
+        self.browser = await self.playwright.chromium.launch(headless=True)
         # Inyecta un User-Agent realista para simular que es un humano navegando
         # desde Chrome en Windows, evitando bloqueos de seguridad básicos
         self.context = await self.browser.new_context(

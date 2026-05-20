@@ -9,3 +9,8 @@ services:
     volumes: 
       - ./ETL_scraper:/app/scraper
     restart: unless-stopped
+
+networks:
+  default:
+    name: plataforma_construccion_net
+    external: true

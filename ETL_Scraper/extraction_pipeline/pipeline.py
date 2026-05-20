@@ -56,28 +56,3 @@ class Pipeline:
         # 6. En caso de error o éxito, asegura el cierre del navegador (finally).     
         finally:
             await supplier_scraper.stop()
-            self.generar_reporte_excel()
-
-    # Genera un archivo Excel de auditoría/QA con los datos de la ejecución
-    def generar_reporte_excel(self):
-        if not self._reporte_final:
-            logger.warning("No hay datos acumulados para generar el reporte Excel")
-            return
-        df_completo = pd.concat(self._reporte_final, ignore_index=True)
-        fecha = datetime.now().strftime("%Y-%m-%d_%H-%M")
-        filename = f"Reporte_Extraccion_{fecha}.xlsx"
-        # Filtrar filas donde el Regex no capturó ninguna especificación técnica.
-        df_regex_fallidas = df_completo[df_completo["atributos_tecnicos"].apply(lambda x: isinstance(x, dict) and len(x) == 0)]
-        try:
-            with pd.ExcelWriter(filename, engine="openpyxl") as writer:
-                # Pestaña 1: Toda la data de la ejecución
-                df_completo.to_excel(writer, sheet_name="Toda la Data", index=False)
-                # Pestaña 2: Materiales sin especificaciones técnicas (para QA)
-                df_regex_fallidas.to_excel(writer, sheet_name="Regex Fallidas", index=False)
-            logger.info(
-                "Reporte Excel generado: %s "
-                "(%d filas totales | %d con Regex fallidas)",
-                filename, len(df_completo), len(df_regex_fallidas)
-            )
-        except Exception as exc:
-            logger.error("No se pudo generar el reporte Excel: %s", exc)

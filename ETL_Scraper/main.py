@@ -23,6 +23,7 @@ async def main():
     logger = logging.getLogger("main")
     # (Cambiar credenciales en .env en caso de ser necesario)
     BACKEND_CONFIG = {
+        "base_url": os.getenv("API_BASE_URL"),
         "username":  os.getenv("API_USERNAME"),
         "password":  os.getenv("API_PASSWORD"),
     }
@@ -34,10 +35,16 @@ async def main():
         return
     # 3. Solicita el diccionario de catálogos y URLs a procesar
     logger.info("Cargando configuración de catálogos desde el Backend .NET...")
-    pages_to_scrap = await backend.fetch_config()
-    if not pages_to_scrap:
+    config_cruda = await backend.fetch_config()
+    if not config_cruda:
         logger.warning("No se encontraron configuraciones de catálogos (URLs) en el Backend .NET.")
         return
+    # Transformar lista JSON → formato que exige Pipeline
+    # NOTA: ajustar nombres de campos cuando .NET confirme el esquema exacto
+    pages_to_scrap = {
+        (item["url"], item["supplierName"]): item["categoriaId"]
+        for item in config_cruda
+    }
     # 4. Instancia y ejecuta el Pipeline de extracción ETL
     etl = Pipeline(pages_to_scrap, backend)
     logger.info("Todo listo. Se procesarán %d secciones de Sodimac.", len(pages_to_scrap))

@@ -10,7 +10,7 @@ def launch_subprocess():
     try:
         #Subproceso en segundo plano
         subproceso = subprocess.Popen(
-            ["python", "test.py"],
+            ["python", "main.py"],
             cwd="/app/scraper",
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,

@@ -2,7 +2,7 @@ import asyncio
 import pandas as pd
 from extraction_pipeline.scraper import SupplierScraper
 
-URL      = "https://www.sodimac.cl/sodimac-cl/lista/cat18320016/Maquinarias-y-complementos?page=1&store=so_com"
+URL = "https://www.sodimac.cl/sodimac-cl/lista/cat18320016/Maquinarias-y-complementos?page=1&store=so_com"
 PROVEEDOR = "sodimac"
 ID_FALSO  = 999
 
