@@ -11,7 +11,7 @@ import os
 import logging
 from dotenv import load_dotenv
 from backend_client import BackendClient
-from pipeline import Pipeline
+from extraction_pipeline.pipeline import Pipeline
 
 async def main(): 
     load_dotenv()
@@ -24,8 +24,8 @@ async def main():
     # (Cambiar credenciales en .env en caso de ser necesario)
     BACKEND_CONFIG = {
         "base_url": os.getenv("API_BASE_URL"),
-        "username":  os.getenv("API_USERNAME"),
-        "password":  os.getenv("API_PASSWORD"),
+        "email": os.getenv("API_USERNAME"),
+        "password": os.getenv("API_PASSWORD"),
     }
     logger.info("Iniciando Sistema de Extracción de Materiales de Construcción.")
     # 2. Autentica y conecta con el Backend .NET
@@ -42,7 +42,7 @@ async def main():
     # Transformar lista JSON → formato que exige Pipeline
     # NOTA: ajustar nombres de campos cuando .NET confirme el esquema exacto
     pages_to_scrap = {
-        (item["url"], item["supplierName"]): item["categoriaId"]
+        (item["urlOrigen"], item["proveedor"]): item["categoriaId"]
         for item in config_cruda
     }
     # 4. Instancia y ejecuta el Pipeline de extracción ETL

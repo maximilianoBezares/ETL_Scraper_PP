@@ -13,7 +13,8 @@ import pandas as pd
 from pages.sodimac_page import SodimacPage
 
 class SupplierScraper:
-    def __init__(self):
+    def __init__(self, backend_instance):
+        self.backend_instance = backend_instance
         self.playwright = None
         self.browser = None
         self.context = None
@@ -60,7 +61,7 @@ class SupplierScraper:
         # Aislamiento: Creamos una pestaña totalmente nueva para esta extracción
         page = await self.context.new_page()
         # Patrón Factory: Instanciamos la clase dinámicamente según el proveedor
-        class_instance = self.supplier_map[supplier_page.lower()](page)
+        class_instance = self.supplier_map[supplier_page.lower()](page, self.backend_instance)
         try:
             # Delegamos la lógica de navegación y extracción a la clase específica
             resultados = await class_instance.extraer_por_catalogo(url)

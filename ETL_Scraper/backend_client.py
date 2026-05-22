@@ -48,6 +48,7 @@ class MaterialScraped:
 #DTO en representacion de un sumario de una ejecucion de sync_materiales() para panel de control
 @dataclass
 class SumarioResultados:
+    ejecucion_id: str = ""
     total_procesados: int = 0
     total_exitosos: int = 0
     total_fallidos: int = 0
@@ -57,13 +58,16 @@ class SumarioResultados:
 
     # Funcion que toma el objeto de python y lo convierte en un diccionario crudo con el esquema esperado por .NET
     def to_dict(self):
-        return {
+        data = {
             "totalProcesados": self.total_procesados,
             "totalExitosos": self.total_exitosos,
             "totalFallidos": self.total_fallidos,
             "categoriasFallidas": self.categorias_fallidas,
             "erroresDetalle": self.errores_detalle,
         }
+        if self.ejecucion_id and str(self.ejecucion_id).strip():
+            data["ejecucionId"] = self.ejecucion_id
+        return data
 
 # Cliente HTTP Singleton para el backend .NET
 class BackendClient:
@@ -78,7 +82,7 @@ class BackendClient:
 
     def __init__(self,
         base_url = None,
-        username = None,
+        email = None,
         password = None,
         timeout = 30.0,
         max_retries = 3,
@@ -88,7 +92,7 @@ class BackendClient:
         if self._initialized:
             return
         self.base_url = (base_url or "").rstrip("/")
-        self.username = username or ""
+        self.username = email or ""
         self.password = password or ""
         self.timeout = timeout
         self.max_retries = max_retries
@@ -129,7 +133,7 @@ class BackendClient:
             logger.info("Ya hay una sesión JWT activa")
             return True
         client = self._get_client()
-        credenciales = {"username": self.username, "password": self.password}
+        credenciales = {"email": self.username, "password": self.password}
         try:
             # Cambiar /api/auth/login si es que ruta es distinta a la del login
             response = await client.post("/api/auth/login", json=credenciales)
@@ -206,6 +210,8 @@ class BackendClient:
         materiales_api: list[dict[str, Any]] = []
         for _, row in df_scrapeado.iterrows():
             try:
+                print(f"DEBUG: columnas disponibles: {df_scrapeado.columns.tolist()}")
+                print(f"DEBUG: primer valor de id_catalogo: {df_scrapeado['id_catalogo'].iloc[0]}")
                 producto = MaterialScraped(
                     nombre=str(row.get("nombre", "")),
                     precio=self._limpiar_precio(row.get("precio", 0)),
@@ -214,7 +220,7 @@ class BackendClient:
                     imagen_url=str(row.get("imagen_url", "")),
                     atributos_tecnicos=row.get("atributos_tecnicos") or {},
                     url_material=str(row.get("url_producto", "")),
-                    categoria=str(row.get("categoria", "")),
+                    categoria=str(row.get("id_catalogo", "")),
                 )
                 materiales_api.append(producto.to_api_dict())
             except Exception as exc:
@@ -314,7 +320,7 @@ class BackendClient:
         try:
             # Cambiar endpoint si es que el nombre de la ruta no es el mismo
             response = await client.post(
-                "/api/scraper/ejecuciones/resumen",
+                "/api/scraper/resumen",
                 json=summary.to_dict(),
             )
             if response.status_code in (200, 201):
@@ -325,6 +331,27 @@ class BackendClient:
                 )
         except Exception as exc:
             logger.warning("Error al enviar resumen al backend: %s", exc)
+
+    async def verificar_materiales_nuevos(self, urls: list[str]) -> list[str]:
+        if not urls:
+            return []
+        client = self._get_client()
+        try:
+            # httpx serializa listas como ?urls=x&urls=y automáticamente
+            response = await client.get(
+                "/api/scraper/validate-batch",
+                params=[("urls", url) for url in urls],
+            )
+            if response.status_code == 200:
+                existentes = set(response.json().get("urlsExistentes", []))
+                urls_nuevas = [url for url in urls if url not in existentes]
+                logger.info("Pre-validación: %d enviadas | %d nuevas | %d ya existentes", len(urls), len(urls_nuevas), len(existentes),)
+                return urls_nuevas
+            logger.error("validate-batch falló. Status: %s — %s", response.status_code, response.text)
+            return urls
+        except Exception as exc:
+            logger.exception("Error en verificar_materiales_nuevos: %s", exc)
+            return urls
 
     @staticmethod
     # Convierte un precio en texto a entero (pesos chilenos)

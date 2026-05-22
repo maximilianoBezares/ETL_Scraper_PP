@@ -31,7 +31,7 @@ class Pipeline:
             logger.critical("No se pudo conectar al backend .NET. Abortando pipeline")           
             return
         # 2. Inicializa el motor de scraping (Playwright).
-        supplier_scraper = SupplierScraper()
+        supplier_scraper = SupplierScraper(self.backend_instance)
         await supplier_scraper.start()
         # Inicializar lista para el Excel
         self._reporte_final = []

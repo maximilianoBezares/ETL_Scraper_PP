@@ -2,8 +2,9 @@ import asyncio as asyn
 from .base_page import BasePage
 
 class SodimacPage(BasePage):
-    def __init__(self, page):
+    def __init__(self, page, backend_instance):
         super().__init__(page, "Sodimac")
+        self.backend_instance = backend_instance
         # Selectores especiales de Sodimac
         self.selector_boton_next = "button#testId-pagination-bottom-arrow-right"
         self.selector_material = "div.search-results-4-grid.grid-pod"
@@ -19,10 +20,8 @@ class SodimacPage(BasePage):
     async def extraer_por_catalogo(self, url):
         self.logger.info("Navegando a Sodimac Catalogo: %s...", url)
         await self.page.goto(url, wait_until="domcontentloaded", timeout=60000)
-
         materiales = []
         num_pagina  = 1
-
         while True:
             self.logger.info("Procesando página %d...", num_pagina)
             # 1. Volver al tope (evita cursor fantasma tras paginación)
@@ -35,14 +34,15 @@ class SodimacPage(BasePage):
             # 4. Extraer productos de esta página
             materiales_pagina = await self._extraer_materiales_pagina(num_pagina)
             # 5. Extraer descripcion solo a materiales nuevos (No estan en la base de datos)
-            if materiales_pagina != None:
-                # TODO: Cambiar cuando el metodo para validar este listo
-                # materiales_nuevos = await self.validar_materiales_nuevos(materiales_pagina)
+            if materiales_pagina:
+                urls_pagina = [m["url_producto"] for m in materiales_pagina]
+                urls_nuevas_set = set(await self.backend_instance.verificar_materiales_nuevos(urls_pagina))
                 for i in materiales_pagina:
-                    link_actual = i["link"]
-                    desc_material = await self._fetch_detalle(link_actual)
-                    i["descripcion"] = desc_material
-                    self.logger.info("Descripcion agregada a: " + i["nombre"])
+                    link_actual = i["url_producto"]
+                    if link_actual in urls_nuevas_set:
+                        desc_material = await self._fetch_detalle(link_actual)
+                        i["descripcion"] = desc_material
+                        self.logger.info("Descripcion agregada a: " + i["nombre"])
             materiales.extend(materiales_pagina)
             self.logger.info("Página %d: %d materiales extraídos (total acumulado: %d).", num_pagina, len(materiales_pagina), len(materiales))
             # 6. Cambio de pagina usando boton_next
@@ -96,22 +96,22 @@ class SodimacPage(BasePage):
                 (selectores) => {
                     const items = document.querySelectorAll(selectores.material);
                     return Array.from(items).map(item => ({
-                        nombre:    item.querySelector(selectores.nombre)?.innerText.trim()         ?? "",
-                        marca:     item.querySelector(selectores.marca)?.innerText.trim()          ?? "",
-                        precio:    item.querySelector(selectores.precio)?.innerText.trim()         ?? "",
+                        nombre: item.querySelector(selectores.nombre)?.innerText.trim()         ?? "",
+                        marca: item.querySelector(selectores.marca)?.innerText.trim()          ?? "",
+                        precio: item.querySelector(selectores.precio)?.innerText.trim()         ?? "",
                         proveedor: item.querySelector(selectores.proveedor)?.innerText.trim()      ?? "",
-                        link:      item.querySelector(selectores.link)?.getAttribute("href")       ?? "",
-                        imagen:    item.querySelector(selectores.imagen)?.getAttribute("src")      ?? "",
+                        url_producto: item.querySelector(selectores.link)?.getAttribute("href")       ?? "",
+                        imagen_url: item.querySelector(selectores.imagen)?.getAttribute("src")      ?? "",
                     })).filter(p => p.nombre !== "");
                 }
                 """, {
-                    "material":  self.selector_material,
-                    "nombre":    self.selector_nombre,
-                    "marca":     self.selector_marca,
-                    "precio":    self.selector_precio,
+                    "material": self.selector_material,
+                    "nombre": self.selector_nombre,
+                    "marca": self.selector_marca,
+                    "precio": self.selector_precio,
                     "proveedor": self.selector_proveedor,
-                    "link":      self.selector_link,
-                    "imagen":    self.selector_imagen,
+                    "link": self.selector_link,
+                    "imagen": self.selector_imagen,
             })
             self.logger.info("Página %d: %d materiales extraídos.", num_pagina, len(materiales))
             return materiales
