@@ -26,6 +26,7 @@ class MaterialScraped:
     marca: str
     proveedor: str
     imagen_url: str
+    descripcion: str = ""
     # Con default_factory=dict es para crear diccionarios especificos para cada atributo, en vez de una lista con tamaño estatico
     atributos_tecnicos: dict[str, str] = field(default_factory=dict)
     # Posibles atributos opcionales
@@ -39,6 +40,7 @@ class MaterialScraped:
             "precio": self.precio,
             "marca": self.marca,
             "proveedor": self.proveedor,
+            "descripcion": self.descripcion,
             "imagenUrl": self.imagen_url,
             "urlMaterial": self.url_material,
             "categoria": self.categoria,
@@ -168,6 +170,32 @@ class BackendClient:
             logger.exception("Error desconocido en connect(): %s", exc)
             return False
 
+    # Inicializa una ejecución en el backend y obtiene su ID
+    async def iniciar_ejecucion(self, proveedor: str) -> str:
+        if not self._jwt_token:
+            logger.error("iniciar_ejecucion() llamado sin JWT. Ejecuta connect() primero")
+            return ""
+        client = self._get_client()
+        try:
+            response = await client.post(
+                "/api/scraper/ejecuciones/iniciar",
+                json={"proveedor": proveedor},
+            )
+            if response.status_code in (200, 201):
+                data = response.json()
+                ejecucion_id = data.get("ejecucionId", "")
+                logger.info("Ejecución iniciada en backend con ID: %s", ejecucion_id)
+                return ejecucion_id
+            else:
+                logger.error(
+                    "Error al iniciar ejecución en backend. Status: %s — %s",
+                    response.status_code, response.text
+                )
+                return ""
+        except Exception as exc:
+            logger.exception("Error inesperado en iniciar_ejecucion(): %s", exc)
+            return ""
+
     # Obtiene la lista de URLs y categorías de construcción que el scraper
     async def fetch_config(self):
         if not self._jwt_token:
@@ -206,17 +234,23 @@ class BackendClient:
         if df_scrapeado.empty:
             logger.warning("El DataFrame está vacío. No hay productos para sincronizar")
             return SumarioResultados()
+        
+        # Obtener el proveedor del dataframe para iniciar la ejecución en el backend
+        proveedor = "Desconocido"
+        if not df_scrapeado.empty and "proveedor" in df_scrapeado.columns:
+            proveedor = str(df_scrapeado["proveedor"].iloc[0])
+        ejecucion_id = await self.iniciar_ejecucion(proveedor)
+
         # Construir lista de diccionarios listos para la API
         materiales_api: list[dict[str, Any]] = []
         for _, row in df_scrapeado.iterrows():
             try:
-                print(f"DEBUG: columnas disponibles: {df_scrapeado.columns.tolist()}")
-                print(f"DEBUG: primer valor de id_catalogo: {df_scrapeado['id_catalogo'].iloc[0]}")
                 producto = MaterialScraped(
                     nombre=str(row.get("nombre", "")),
                     precio=self._limpiar_precio(row.get("precio", 0)),
                     marca=str(row.get("marca", "Sin marca")),
                     proveedor=str(row.get("proveedor", "Desconocido")),
+                    descripcion=str(row.get("descripcion", "")),
                     imagen_url=str(row.get("imagen_url", "")),
                     atributos_tecnicos=row.get("atributos_tecnicos") or {},
                     url_material=str(row.get("url_producto", "")),
@@ -225,7 +259,7 @@ class BackendClient:
                 materiales_api.append(producto.to_api_dict())
             except Exception as exc:
                 logger.warning("Fila ignorada por error de mapeo: %s", exc)
-        summary = SumarioResultados(total_procesados=len(materiales_api))
+        summary = SumarioResultados(ejecucion_id=ejecucion_id, total_procesados=len(materiales_api))
         client = self._get_client()
         logger.info(
             "Iniciando sincronización: %d productos en lotes de %d",
